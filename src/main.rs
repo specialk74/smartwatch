@@ -159,9 +159,9 @@ async fn set_current_time(
     let hour = now.hour() as u8;
     let minute = now.minute() as u8;
     let second = now.second() as u8;
-    let day_of_week = now.weekday().num_days_from_sunday() as u8 + 1; // Sunday = 1, Monday = 2, ..., Saturday = 7
+    let day_of_week = now.weekday().num_days_from_sunday() as u8; // Sunday = 1, Monday = 2, ..., Saturday = 7
     let fractions = 0u8; // Fractions of a second
-    let adjust_reason = 0u8; // No adjustment
+    let adjust_reason = 1u8; // No adjustment
 
     // Construct the data to write
     let data = [
@@ -174,14 +174,20 @@ async fn set_current_time(
         second,                     // Seconds
         day_of_week,                // Day of Week
         fractions,                  // Fractions of a second
-        adjust_reason,              // Adjust Reason
+        0,
+        adjust_reason, // Adjust Reason
     ];
 
-    // Write the data to the characteristic
-    peripheral
-        .write(characteristic, &data, WriteType::WithResponse)
-        .await?;
+    data.iter().for_each(|b| print!("{:02X} ", b));
 
-    println!("Current time written successfully");
+    // Write the data to the characteristic
+    match peripheral
+        .write(characteristic, &data, WriteType::WithResponse)
+        .await
+    {
+        Ok(_) => println!("Current time written successfully"),
+        Err(e) => eprintln!("Failed to write current time: {:?}", e),
+    }
+
     Ok(())
 }
