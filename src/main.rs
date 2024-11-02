@@ -1,7 +1,7 @@
 // See the "macOS permissions note" in README.md before running this on macOS
 // Big Sur or later.
 
-use btleplug::api::{Central, CharPropFlags, Manager as _, Peripheral, ScanFilter};
+use btleplug::api::{Central, CharPropFlags, Manager as _, Peripheral, ScanFilter, WriteType};
 use btleplug::platform::Manager;
 use futures::stream::StreamExt;
 use std::error::Error;
@@ -13,6 +13,7 @@ use uuid::Uuid;
 const PERIPHERAL_NAME_MATCH_FILTER: &str = "Amazfit GTS 4 Mini";
 /// UUID of the characteristic for which we should subscribe to notifications.
 const NOTIFY_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0x6e400002_b534_f393_67a9_e50e24dccA9e);
+const TIME_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0x00002a2b_0000_1000_8000_00805f9b34fb);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -44,10 +45,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .unwrap()
                     .local_name
                     .unwrap_or(String::from("(peripheral name unknown)"));
-                println!(
+                /* println!(
                     "Peripheral {:?} is connected: {:?}",
                     &local_name, is_connected
-                );
+                ); */
                 // Check if it's the peripheral we want.
                 if local_name.contains(PERIPHERAL_NAME_MATCH_FILTER) {
                     println!("Found matching peripheral {:?}...", &local_name);
@@ -67,10 +68,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         println!("Discover peripheral {:?} services...", local_name);
                         peripheral.discover_services().await?;
                         for characteristic in peripheral.characteristics() {
-                            println!("Checking characteristic {:?}", characteristic);
+                            //println!("Checking characteristic {:?}", characteristic);
                             // Subscribe to notifications from the characteristic with the selected
                             // UUID.
-                            if characteristic.uuid == NOTIFY_CHARACTERISTIC_UUID
+                            if characteristic.properties.contains(CharPropFlags::READ)
+                                && characteristic.uuid == TIME_CHARACTERISTIC_UUID
+                            {
+                                println!("Reading characteristic {:?}", characteristic.uuid);
+                                let value = peripheral.read(&characteristic).await?;
+                                println!(
+                                    "Read value from {:?} [{:?}]: {:?}",
+                                    local_name, characteristic.uuid, value
+                                );
+                            }
+                            if characteristic.uuid == TIME_CHARACTERISTIC_UUID {
+                                println!("Write characteristic {:?}", characteristic.uuid);
+                                let value = peripheral
+                                    .write(
+                                        &characteristic,
+                                        &[232, 7, 11, 2, 13, 30, 57, 6, 0, 0, 8],
+                                        WriteType::WithResponse,
+                                    )
+                                    .await;
+                                println!("Value written: {:?}", value);
+                            }
+                            if characteristic.properties.contains(CharPropFlags::READ)
+                                && characteristic.uuid == TIME_CHARACTERISTIC_UUID
+                            {
+                                println!("Reading characteristic {:?}", characteristic.uuid);
+                                let value = peripheral.read(&characteristic).await?;
+                                println!(
+                                    "Read value from {:?} [{:?}]: {:?}",
+                                    local_name, characteristic.uuid, value
+                                );
+                            }
+                            /* if characteristic.uuid == NOTIFY_CHARACTERISTIC_UUID
                                 && characteristic.properties.contains(CharPropFlags::NOTIFY)
                             {
                                 println!("Subscribing to characteristic {:?}", characteristic.uuid);
@@ -85,13 +117,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                         local_name, data.uuid, data.value
                                     );
                                 }
-                            }
+                            } */
                         }
                         println!("Disconnecting from peripheral {:?}...", local_name);
                         peripheral.disconnect().await?;
                     }
-                } else {
-                    println!("Skipping unknown peripheral {:?}", peripheral);
                 }
             }
         }
