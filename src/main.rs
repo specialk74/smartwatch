@@ -1,8 +1,11 @@
 // See the "macOS permissions note" in README.md before running this on macOS
 // Big Sur or later.
 
-use btleplug::api::{Central, CharPropFlags, Manager as _, Peripheral, ScanFilter, WriteType};
+use btleplug::api::{
+    Central, CharPropFlags, Characteristic, Manager as _, Peripheral, ScanFilter, WriteType,
+};
 use btleplug::platform::Manager;
+use chrono::{Datelike, Timelike, Utc};
 use futures::stream::StreamExt;
 use std::error::Error;
 use std::time::Duration;
@@ -13,7 +16,7 @@ use uuid::Uuid;
 const PERIPHERAL_NAME_MATCH_FILTER: &str = "Amazfit GTS 4 Mini";
 /// UUID of the characteristic for which we should subscribe to notifications.
 const NOTIFY_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0x6e400002_b534_f393_67a9_e50e24dccA9e);
-const TIME_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0x00002a2b_0000_1000_8000_00805f9b34fb);
+const TIME_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0x00002a2b_0000_1000_8000_00805f9b34fb); // 00002a2b-0000-1000-8000-00805f9b34fb
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -82,15 +85,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 );
                             }
                             if characteristic.uuid == TIME_CHARACTERISTIC_UUID {
-                                println!("Write characteristic {:?}", characteristic.uuid);
+                                set_current_time(peripheral, &characteristic).await?;
+
+                                /* println!("Write characteristic {:?}", characteristic.uuid);
+                                let value = 0x07e8; // 2022
                                 let value = peripheral
                                     .write(
                                         &characteristic,
-                                        &[232, 7, 11, 2, 13, 30, 57, 6, 0, 0, 8],
+                                        &[
+                                            0, // Anno
+                                            0, // Anno
+                                            0, // Mese
+                                            0, // Giorno del mese
+                                            0, // Ora
+                                            0, // Minuti
+                                            0, // Secondi
+                                            0, //
+                                            0, //
+                                            0, //
+                                            1, //
+                                        ],
                                         WriteType::WithResponse,
                                     )
                                     .await;
-                                println!("Value written: {:?}", value);
+                                println!("Value written: {:?}", value); */
                             }
                             if characteristic.properties.contains(CharPropFlags::READ)
                                 && characteristic.uuid == TIME_CHARACTERISTIC_UUID
@@ -126,5 +144,44 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
+    Ok(())
+}
+
+async fn set_current_time(
+    peripheral: &impl Peripheral,
+    characteristic: &Characteristic,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Get the current time
+    let now = Utc::now();
+    let year = now.year() as u16;
+    let month = now.month() as u8;
+    let day = now.day() as u8;
+    let hour = now.hour() as u8;
+    let minute = now.minute() as u8;
+    let second = now.second() as u8;
+    let day_of_week = now.weekday().num_days_from_sunday() as u8 + 1; // Sunday = 1, Monday = 2, ..., Saturday = 7
+    let fractions = 0u8; // Fractions of a second
+    let adjust_reason = 0u8; // No adjustment
+
+    // Construct the data to write
+    let data = [
+        (year & 0xFF) as u8,        // Year (LSB)
+        ((year >> 8) & 0xFF) as u8, // Year (MSB)
+        month,                      // Month
+        day,                        // Day
+        hour,                       // Hours
+        minute,                     // Minutes
+        second,                     // Seconds
+        day_of_week,                // Day of Week
+        fractions,                  // Fractions of a second
+        adjust_reason,              // Adjust Reason
+    ];
+
+    // Write the data to the characteristic
+    peripheral
+        .write(characteristic, &data, WriteType::WithResponse)
+        .await?;
+
+    println!("Current time written successfully");
     Ok(())
 }
